@@ -1,4 +1,5 @@
 pub mod csv_format;
+pub mod bin_format;
 pub mod error;
 pub mod txt_format;
 pub use csv_format::CsvFormat;

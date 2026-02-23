@@ -18,3 +18,11 @@ impl fmt::Display for BankFormatError {
         }
     }
 }
+
+impl std::error::Error for BankFormatError {}
+
+impl From<std::io::Error> for BankFormatError {
+    fn from(e: std::io::Error) -> Self {
+        BankFormatError::Io(e)
+    }
+}
