@@ -7,6 +7,7 @@ pub mod csv_format;
 pub mod error;
 pub mod txt_format;
 use std::collections::HashMap;
+use std::fmt;
 
 pub use csv_format::CsvFormat;
 use error::BankFormatError;
@@ -33,6 +34,26 @@ pub struct Transaction {
     pub status: Status,
     /// Human-readable description of the transaction.
     pub description: String,
+}
+
+impl fmt::Display for TxType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TxType::Deposit => write!(f, "DEPOSIT"),
+            TxType::Transfer => write!(f, "TRANSFER"),
+            TxType::Withdrawal => write!(f, "WITHDRAWAL"),
+        }
+    }
+}
+
+impl fmt::Display for Status {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Status::Success => write!(f, "SUCCESS"),
+            Status::Failure => write!(f, "FAILURE"),
+            Status::Pending => write!(f, "PENDING"),
+        }
+    }
 }
 
 /// The type of a bank transaction.
