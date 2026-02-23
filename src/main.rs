@@ -1,7 +1,7 @@
 use clap::{Parser, ValueEnum};
 use std::fs::File;
-use ypbank::{CsvFormat, txt_format::TxtFormat, bin_format::BinFormat, convert};
 use ypbank::error::BankFormatError;
+use ypbank::{CsvFormat, bin_format::BinFormat, convert, txt_format::TxtFormat};
 
 #[derive(Parser)]
 #[command(name = "ypbank_converter")]
@@ -33,7 +33,7 @@ fn main() -> Result<(), BankFormatError> {
         (Format::Csv, Format::Bin) => convert::<CsvFormat, BinFormat>(&mut input, &mut stdout)?,
         (Format::Txt, Format::Bin) => convert::<TxtFormat, BinFormat>(&mut input, &mut stdout)?,
         (Format::Bin, Format::Csv) => convert::<BinFormat, CsvFormat>(&mut input, &mut stdout)?,
-        (Format::Bin, Format::Txt) => convert::<BinFormat, TxtFormat>(&mut input, &mut stdout)?, 
+        (Format::Bin, Format::Txt) => convert::<BinFormat, TxtFormat>(&mut input, &mut stdout)?,
         _ => println!("input and output formats can not be the same"),
     };
     Ok(())

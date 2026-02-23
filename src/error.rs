@@ -1,10 +1,16 @@
+//! Error types for the ypbank library.
 use std::fmt;
 
+/// All errors that can occur during parsing or serialization of transaction records.
 #[derive(Debug)]
 pub enum BankFormatError {
+    /// An IO error occurred while reading or writing.
     Io(std::io::Error),
+    /// A CSV parsing error occurred.
     Csv(csv::Error),
+    /// A general parse error with a description.
     Parse(String),
+    /// The binary data is invalid or corrupted.
     InvalidBinary(String),
 }
 

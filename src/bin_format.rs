@@ -1,5 +1,5 @@
-use crate::{BankFormat, Status, Transaction, TxId, TxType};
 use crate::error::BankFormatError;
+use crate::{BankFormat, Status, Transaction, TxId, TxType};
 use std::io::{Read, Write};
 
 const MAGIC: [u8; 4] = [0x59, 0x50, 0x42, 0x4E]; // 'YPBN'
@@ -19,9 +19,10 @@ impl BankFormat for BinFormat {
             }
 
             if magic != MAGIC {
-                return Err(BankFormatError::InvalidBinary(
-                    format!("invalid magic: {:?}", magic)
-                ));
+                return Err(BankFormatError::InvalidBinary(format!(
+                    "invalid magic: {:?}",
+                    magic
+                )));
             }
 
             // read record size
@@ -41,9 +42,12 @@ impl BankFormat for BinFormat {
                 0 => TxType::Deposit,
                 1 => TxType::Transfer,
                 2 => TxType::Withdrawal,
-                other => return Err(BankFormatError::InvalidBinary(
-                    format!("unknown tx_type byte: {}", other)
-                )),
+                other => {
+                    return Err(BankFormatError::InvalidBinary(format!(
+                        "unknown tx_type byte: {}",
+                        other
+                    )));
+                }
             };
 
             // FROM_USER_ID
@@ -68,9 +72,12 @@ impl BankFormat for BinFormat {
                 0 => Status::Success,
                 1 => Status::Failure,
                 2 => Status::Pending,
-                other => return Err(BankFormatError::InvalidBinary(
-                    format!("unknown status byte: {}", other)
-                )),
+                other => {
+                    return Err(BankFormatError::InvalidBinary(format!(
+                        "unknown status byte: {}",
+                        other
+                    )));
+                }
             };
 
             // DESC_LEN
@@ -114,30 +121,36 @@ impl BankFormat for BinFormat {
             w.write_all(&MAGIC).map_err(BankFormatError::Io)?;
 
             // record size
-            w.write_all(&record_size.to_be_bytes()).map_err(BankFormatError::Io)?;
+            w.write_all(&record_size.to_be_bytes())
+                .map_err(BankFormatError::Io)?;
 
             // TX_ID
-            w.write_all(&(tx.tx_id as TxId).to_be_bytes()).map_err(BankFormatError::Io)?;
+            w.write_all(&(tx.tx_id as TxId).to_be_bytes())
+                .map_err(BankFormatError::Io)?;
 
             // TX_TYPE
             let tx_type_byte: u8 = match tx.tx_type {
-                TxType::Deposit    => 0,
-                TxType::Transfer   => 1,
+                TxType::Deposit => 0,
+                TxType::Transfer => 1,
                 TxType::Withdrawal => 2,
             };
             w.write_all(&[tx_type_byte]).map_err(BankFormatError::Io)?;
 
             // FROM_USER_ID
-            w.write_all(&(tx.from_user_id as u64).to_be_bytes()).map_err(BankFormatError::Io)?;
+            w.write_all(&(tx.from_user_id as u64).to_be_bytes())
+                .map_err(BankFormatError::Io)?;
 
             // TO_USER_ID
-            w.write_all(&(tx.to_user_id as u64).to_be_bytes()).map_err(BankFormatError::Io)?;
+            w.write_all(&(tx.to_user_id as u64).to_be_bytes())
+                .map_err(BankFormatError::Io)?;
 
             // AMOUNT
-            w.write_all(&tx.amount.to_be_bytes()).map_err(BankFormatError::Io)?;
+            w.write_all(&tx.amount.to_be_bytes())
+                .map_err(BankFormatError::Io)?;
 
             // TIMESTAMP
-            w.write_all(&(tx.timestamp as u64).to_be_bytes()).map_err(BankFormatError::Io)?;
+            w.write_all(&(tx.timestamp as u64).to_be_bytes())
+                .map_err(BankFormatError::Io)?;
 
             // STATUS
             let status_byte: u8 = match tx.status {
@@ -148,7 +161,8 @@ impl BankFormat for BinFormat {
             w.write_all(&[status_byte]).map_err(BankFormatError::Io)?;
 
             // DESC_LEN
-            w.write_all(&desc_len.to_be_bytes()).map_err(BankFormatError::Io)?;
+            w.write_all(&desc_len.to_be_bytes())
+                .map_err(BankFormatError::Io)?;
 
             // DESCRIPTION
             if desc_len > 0 {
@@ -156,6 +170,106 @@ impl BankFormat for BinFormat {
             }
         }
 
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    fn valid_transaction() -> Transaction {
+        Transaction {
+            tx_id: 1,
+            tx_type: TxType::Deposit,
+            from_user_id: 0,
+            to_user_id: 42,
+            amount: 1000,
+            timestamp: 1234567890,
+            status: Status::Success,
+            description: "test".to_string(),
+        }
+    }
+
+    fn make_valid_record() -> Vec<u8> {
+        let mut buf = Vec::new();
+        BinFormat::write_all(&mut buf, &[valid_transaction()]).unwrap();
+        buf
+    }
+
+    #[test]
+    fn test_invalid_binary_cases() {
+        let full = make_valid_record();
+
+        let cases: Vec<(Vec<u8>, &str)> = vec![
+            // invalid magic
+            (vec![0x00, 0x00, 0x00, 0x00], "invalid magic"),
+            // invalid tx_type
+            (
+                {
+                    let mut b = full.clone();
+                    b[16] = 0x04;
+                    b
+                },
+                "unknown tx_type byte: 4",
+            ),
+            // invalid status
+            (
+                {
+                    let mut b = full.clone();
+                    b[49] = 0x04;
+                    b
+                },
+                "unknown status byte: 4",
+            ),
+        ];
+
+        for (bad_data, expected_msg) in cases {
+            let mut cursor = Cursor::new(bad_data);
+            match BinFormat::read_all(&mut cursor) {
+                Err(BankFormatError::InvalidBinary(msg)) => {
+                    assert!(msg.contains(expected_msg), "got: {}", msg);
+                }
+                other => panic!("expected InvalidBinary, got {:?}", other),
+            }
+        }
+    }
+
+    #[test]
+    fn test_read_all_valid_transaction() {
+        let buf = make_valid_record();
+        let mut cursor = Cursor::new(buf);
+
+        match BinFormat::read_all(&mut cursor) {
+            Ok(transactions) => {
+                assert_eq!(transactions.len(), 1);
+                assert_eq!(transactions[0], valid_transaction());
+            }
+            Err(e) => panic!("expected Ok, got error: {}", e),
+        }
+    }
+
+    #[test]
+    fn test_bin_roundtrip() -> Result<(), BankFormatError> {
+        let original = vec![Transaction {
+            tx_id: 1,
+            tx_type: TxType::Deposit,
+            from_user_id: 10,
+            to_user_id: 20,
+            amount: 1000,
+            timestamp: 1234567890,
+            status: Status::Success,
+            description: "food".to_string(),
+        }];
+
+        let mut buf = Vec::new();
+        BinFormat::write_all(&mut buf, &original)?;
+
+        let mut cursor = Cursor::new(buf);
+        let parsed = BinFormat::read_all(&mut cursor)?;
+
+        assert_eq!(original, parsed);
         Ok(())
     }
 }
