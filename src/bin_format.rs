@@ -1,4 +1,4 @@
-use crate::{BankFormat, Transaction, TxType, Status};
+use crate::{BankFormat, Status, Transaction, TxId, TxType};
 use crate::error::BankFormatError;
 use std::io::{Read, Write};
 
@@ -32,7 +32,7 @@ impl BankFormat for BinFormat {
             // TX_ID
             let mut buf8 = [0u8; 8];
             r.read_exact(&mut buf8).map_err(BankFormatError::Io)?;
-            let tx_id = u64::from_be_bytes(buf8) as i64;
+            let tx_id = u64::from_be_bytes(buf8) as TxId;
 
             // TX_TYPE
             let mut buf1 = [0u8; 1];
@@ -117,7 +117,7 @@ impl BankFormat for BinFormat {
             w.write_all(&record_size.to_be_bytes()).map_err(BankFormatError::Io)?;
 
             // TX_ID
-            w.write_all(&(tx.tx_id as u64).to_be_bytes()).map_err(BankFormatError::Io)?;
+            w.write_all(&(tx.tx_id as TxId).to_be_bytes()).map_err(BankFormatError::Io)?;
 
             // TX_TYPE
             let tx_type_byte: u8 = match tx.tx_type {

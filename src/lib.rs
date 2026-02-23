@@ -2,12 +2,16 @@ pub mod csv_format;
 pub mod bin_format;
 pub mod error;
 pub mod txt_format;
+use std::collections::HashMap;
+
 pub use csv_format::CsvFormat;
 use error::BankFormatError;
 
+pub type TxId = u64;
+
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Transaction {
-    pub tx_id: i64,
+    pub tx_id: TxId,
     pub tx_type: TxType,
     pub from_user_id: i64,
     pub to_user_id: i64,
@@ -49,6 +53,49 @@ where
 {
     let transactions = From::read_all(r)?;
     To::write_all(w, &transactions)
+}
+
+pub fn compare<F1, F2>(
+    r1: &mut impl std::io::Read,
+    r2: &mut impl std::io::Read,
+) -> Result<CompareResult, BankFormatError>
+where
+    F1: BankFormat,
+    F2: BankFormat,
+{
+    let transactions_one = F1::read_all(r1)?;
+    let transactions_two = F2::read_all(r2)?;
+
+    let map1: HashMap<TxId, Transaction> = transactions_one.into_iter().map(|t| (t.tx_id, t)).collect();
+    let map2: HashMap<TxId, Transaction> = transactions_two.into_iter().map(|t| (t.tx_id, t)).collect();
+
+    let mut missing_in_2 = vec![];
+    let mut missing_in_1 = vec![];
+
+    for id in map1.keys() {
+        if !map2.contains_key(id) {
+            missing_in_2.push(*id);
+        }
+    }
+    for id in map2.keys() {
+        if !map1.contains_key(id) {
+            missing_in_1.push(*id);
+        }
+    }
+
+    if missing_in_1.is_empty() && missing_in_2.is_empty() {
+        Ok(CompareResult::Identical)
+    } else {
+        Ok(CompareResult::Mismatch { missing_in_1, missing_in_2 })
+    }
+}
+
+pub enum CompareResult {
+    Identical,
+    Mismatch {
+        missing_in_1: Vec<TxId>,
+        missing_in_2: Vec<TxId>,
+    },
 }
 
 pub fn add(left: u64, right: u64) -> u64 {
