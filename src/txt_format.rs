@@ -104,8 +104,8 @@ impl TxtFormat {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Cursor;
     use crate::{Status, TxType};
+    use std::io::Cursor;
 
     fn expected_transaction() -> Transaction {
         Transaction {
@@ -171,7 +171,8 @@ mod tests {
                  AMOUNT: 1000\n\
                  TIMESTAMP: 1234567890\n\
                  STATUS: SUCCESS\n\
-                 DESCRIPTION: \"test\"\n\n".to_string(),
+                 DESCRIPTION: \"test\"\n\n"
+                    .to_string(),
                 "unknown tx_type",
             ),
             // invalid status
@@ -184,7 +185,8 @@ mod tests {
                  AMOUNT: 1000\n\
                  TIMESTAMP: 1234567890\n\
                  STATUS: INVALID\n\
-                 DESCRIPTION: \"test\"\n\n".to_string(),
+                 DESCRIPTION: \"test\"\n\n"
+                    .to_string(),
                 "unknown status",
             ),
             // missing field
@@ -192,7 +194,8 @@ mod tests {
                 "# Record 1\n\
                  TX_ID: 1\n\
                  TX_TYPE: DEPOSIT\n\
-                 DESCRIPTION: \"test\"\n\n".to_string(),
+                 DESCRIPTION: \"test\"\n\n"
+                    .to_string(),
                 "missing field",
             ),
             // invalid tx_id
@@ -205,7 +208,8 @@ mod tests {
                  AMOUNT: 1000\n\
                  TIMESTAMP: 1234567890\n\
                  STATUS: SUCCESS\n\
-                 DESCRIPTION: \"test\"\n\n".to_string(),
+                 DESCRIPTION: \"test\"\n\n"
+                    .to_string(),
                 "TX_ID",
             ),
         ];

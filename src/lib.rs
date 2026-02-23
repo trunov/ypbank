@@ -99,7 +99,7 @@ pub trait BankFormat: Sized {
 ///
 /// # Example
 /// ```no_run
-/// convert::<CsvFormat, BinFormat>(&mut input, &mut output)?;
+///  // convert::<CsvFormat, BinFormat>(&mut input, &mut output)?;
 /// ```
 pub fn convert<From, To>(
     r: &mut impl std::io::Read,
@@ -158,6 +158,7 @@ where
 }
 
 /// The result of comparing two sets of transaction records.
+#[derive(Debug)]
 pub enum CompareResult {
     /// Both sources contain identical transaction records.
     Identical,
@@ -170,17 +171,153 @@ pub enum CompareResult {
     },
 }
 
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bin_format::BinFormat;
+    use crate::csv_format::CsvFormat;
+    use crate::txt_format::TxtFormat;
+    use std::io::Cursor;
+
+    fn expected_transaction() -> Transaction {
+        Transaction {
+            tx_id: 1,
+            tx_type: TxType::Deposit,
+            from_user_id: 0,
+            to_user_id: 42,
+            amount: 1000,
+            timestamp: 1234567890,
+            status: Status::Success,
+            description: "test".to_string(),
+        }
+    }
+
+    // --- convert tests ---
 
     #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+    fn test_convert_csv_to_bin() {
+        let csv = "tx_id,tx_type,from_user_id,to_user_id,amount,timestamp,status,description\n\
+                   1,DEPOSIT,0,42,1000,1234567890,SUCCESS,test\n";
+
+        let mut input = Cursor::new(csv);
+        let mut output = Vec::new();
+
+        convert::<CsvFormat, BinFormat>(&mut input, &mut output).unwrap();
+
+        let mut cursor = Cursor::new(output);
+        let transactions = BinFormat::read_all(&mut cursor).unwrap();
+        assert_eq!(transactions.len(), 1);
+        assert_eq!(transactions[0], expected_transaction());
+    }
+
+    #[test]
+    fn test_convert_bin_to_csv() {
+        let original = vec![expected_transaction()];
+        let mut bin_buf = Vec::new();
+        BinFormat::write_all(&mut bin_buf, &original).unwrap();
+
+        let mut input = Cursor::new(bin_buf);
+        let mut output = Vec::new();
+
+        convert::<BinFormat, CsvFormat>(&mut input, &mut output).unwrap();
+
+        let mut cursor = Cursor::new(output);
+        let transactions = CsvFormat::read_all(&mut cursor).unwrap();
+        assert_eq!(transactions, original);
+    }
+
+    #[test]
+    fn test_convert_csv_to_txt() {
+        let csv = "tx_id,tx_type,from_user_id,to_user_id,amount,timestamp,status,description\n\
+                   1,DEPOSIT,0,42,1000,1234567890,SUCCESS,test\n";
+
+        let mut input = Cursor::new(csv);
+        let mut output = Vec::new();
+
+        convert::<CsvFormat, TxtFormat>(&mut input, &mut output).unwrap();
+
+        let mut cursor = Cursor::new(output);
+        let transactions = TxtFormat::read_all(&mut cursor).unwrap();
+        assert_eq!(transactions[0], expected_transaction());
+    }
+
+    // --- compare tests ---
+
+    #[test]
+    fn test_compare_identical_same_format() {
+        let csv = "tx_id,tx_type,from_user_id,to_user_id,amount,timestamp,status,description\n\
+                   1,DEPOSIT,0,42,1000,1234567890,SUCCESS,test\n";
+
+        let mut r1 = Cursor::new(csv);
+        let mut r2 = Cursor::new(csv);
+
+        match compare::<CsvFormat, CsvFormat>(&mut r1, &mut r2).unwrap() {
+            CompareResult::Identical => {}
+            other => panic!("expected Identical, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_compare_identical_different_formats() {
+        let original = vec![expected_transaction()];
+        let mut bin_buf = Vec::new();
+        BinFormat::write_all(&mut bin_buf, &original).unwrap();
+
+        let csv = "tx_id,tx_type,from_user_id,to_user_id,amount,timestamp,status,description\n\
+                   1,DEPOSIT,0,42,1000,1234567890,SUCCESS,test\n";
+
+        let mut r1 = Cursor::new(bin_buf);
+        let mut r2 = Cursor::new(csv);
+
+        assert!(matches!(
+            compare::<BinFormat, CsvFormat>(&mut r1, &mut r2).unwrap(),
+            CompareResult::Identical
+        ));
+    }
+
+    #[test]
+    fn test_compare_missing_in_second() {
+        let csv1 = "tx_id,tx_type,from_user_id,to_user_id,amount,timestamp,status,description\n\
+                    1,DEPOSIT,0,42,1000,1234567890,SUCCESS,test\n\
+                    2,TRANSFER,10,20,500,1234567891,PENDING,second\n";
+        let csv2 = "tx_id,tx_type,from_user_id,to_user_id,amount,timestamp,status,description\n\
+                    1,DEPOSIT,0,42,1000,1234567890,SUCCESS,test\n";
+
+        let mut r1 = Cursor::new(csv1);
+        let mut r2 = Cursor::new(csv2);
+
+        match compare::<CsvFormat, CsvFormat>(&mut r1, &mut r2).unwrap() {
+            CompareResult::Mismatch {
+                missing_in_1,
+                missing_in_2,
+            } => {
+                assert!(missing_in_1.is_empty());
+                assert_eq!(missing_in_2, vec![2]);
+            }
+            _ => panic!("expected Mismatch"),
+        }
+    }
+
+    #[test]
+    fn test_compare_missing_in_first() {
+        let csv1 = "tx_id,tx_type,from_user_id,to_user_id,amount,timestamp,status,description\n\
+                    1,DEPOSIT,0,42,1000,1234567890,SUCCESS,test\n";
+        let csv2 = "tx_id,tx_type,from_user_id,to_user_id,amount,timestamp,status,description\n\
+                    1,DEPOSIT,0,42,1000,1234567890,SUCCESS,test\n\
+                    2,TRANSFER,10,20,500,1234567891,PENDING,second\n";
+
+        let mut r1 = Cursor::new(csv1);
+        let mut r2 = Cursor::new(csv2);
+
+        match compare::<CsvFormat, CsvFormat>(&mut r1, &mut r2).unwrap() {
+            CompareResult::Mismatch {
+                missing_in_1,
+                missing_in_2,
+            } => {
+                assert_eq!(missing_in_1, vec![2]);
+                assert!(missing_in_2.is_empty());
+            }
+            _ => panic!("expected Mismatch"),
+        }
     }
 }
