@@ -10,6 +10,13 @@ impl BankFormat for CsvFormat {
 
         for result in rdr.records() {
             let record = result.map_err(|e| BankFormatError::Parse(e.to_string()))?;
+            if record.len() != 8 {
+                return Err(BankFormatError::Parse(format!(
+                    "expected 8 fields, got {}",
+                    record.len()
+                )));
+            }
+
             transactions.push(Transaction {
                 tx_id: record[0]
                     .parse()

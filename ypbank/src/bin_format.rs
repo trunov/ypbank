@@ -3,6 +3,7 @@ use crate::{BankFormat, Status, Transaction, TxId, TxType};
 use std::io::{Read, Write};
 
 const MAGIC: [u8; 4] = [0x59, 0x50, 0x42, 0x4E]; // 'YPBN'
+const MAX_DESC_LEN: usize = 4096;
 
 pub struct BinFormat;
 
@@ -28,7 +29,13 @@ impl BankFormat for BinFormat {
             // read record size
             let mut buf4 = [0u8; 4];
             r.read_exact(&mut buf4).map_err(BankFormatError::Io)?;
-            let _record_size = u32::from_be_bytes(buf4);
+            let record_size = u32::from_be_bytes(buf4);
+            if record_size < 46 {
+                return Err(BankFormatError::InvalidBinary(format!(
+                    "record_size {} is too small, minimum is 46 bytes",
+                    record_size
+                )));
+            }
 
             // TX_ID
             let mut buf8 = [0u8; 8];
@@ -83,6 +90,12 @@ impl BankFormat for BinFormat {
             // DESC_LEN
             r.read_exact(&mut buf4).map_err(BankFormatError::Io)?;
             let desc_len = u32::from_be_bytes(buf4) as usize;
+            if desc_len > MAX_DESC_LEN {
+                return Err(BankFormatError::InvalidBinary(format!(
+                    "description length {} exceeds maximum allowed {}",
+                    desc_len, MAX_DESC_LEN
+                )));
+            }
 
             // DESCRIPTION
             let description = if desc_len > 0 {

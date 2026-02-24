@@ -1,0 +1,8 @@
+[package]
+name = "ypbank"
+version = "0.1.1"
+edition = "2024"
+
+[dependencies]
+clap = { workspace = true }
+csv = { workspace = true }
