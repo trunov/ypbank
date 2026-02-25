@@ -135,24 +135,29 @@ where
 
     let mut missing_in_2 = vec![];
     let mut missing_in_1 = vec![];
+    let mut differing = vec![];
 
-    for id in map1.keys() {
-        if !map2.contains_key(id) {
-            missing_in_2.push(*id);
+    for (id, tx1) in &map1 {
+        match map2.get(id) {
+            None => missing_in_2.push(*id),
+            Some(tx2) if tx1 != tx2 => differing.push((*id, tx1.clone(), tx2.clone())),
+            _ => {}
         }
     }
+
     for id in map2.keys() {
         if !map1.contains_key(id) {
             missing_in_1.push(*id);
         }
     }
 
-    if missing_in_1.is_empty() && missing_in_2.is_empty() {
+    if missing_in_1.is_empty() && missing_in_2.is_empty() && differing.is_empty() {
         Ok(CompareResult::Identical)
     } else {
         Ok(CompareResult::Mismatch {
             missing_in_1,
             missing_in_2,
+            differing,
         })
     }
 }
@@ -168,6 +173,8 @@ pub enum CompareResult {
         missing_in_1: Vec<TxId>,
         /// Transaction IDs present in source 1 but missing in source 2.
         missing_in_2: Vec<TxId>,
+        //// Transactions present in both sources but with differing fields.
+        differing: Vec<(TxId, Transaction, Transaction)>,
     },
 }
 
@@ -278,21 +285,21 @@ mod tests {
     #[test]
     fn test_compare_missing_in_second() {
         let csv1 = "tx_id,tx_type,from_user_id,to_user_id,amount,timestamp,status,description\n\
-                    1,DEPOSIT,0,42,1000,1234567890,SUCCESS,test\n\
-                    2,TRANSFER,10,20,500,1234567891,PENDING,second\n";
+                1,DEPOSIT,0,42,1000,1234567890,SUCCESS,test\n\
+                2,TRANSFER,10,20,500,1234567891,PENDING,second\n";
         let csv2 = "tx_id,tx_type,from_user_id,to_user_id,amount,timestamp,status,description\n\
-                    1,DEPOSIT,0,42,1000,1234567890,SUCCESS,test\n";
-
+                1,DEPOSIT,0,42,1000,1234567890,SUCCESS,test\n";
         let mut r1 = Cursor::new(csv1);
         let mut r2 = Cursor::new(csv2);
-
         match compare::<CsvFormat, CsvFormat>(&mut r1, &mut r2).unwrap() {
             CompareResult::Mismatch {
                 missing_in_1,
                 missing_in_2,
+                differing,
             } => {
                 assert!(missing_in_1.is_empty());
                 assert_eq!(missing_in_2, vec![2]);
+                assert!(differing.is_empty());
             }
             _ => panic!("expected Mismatch"),
         }
@@ -301,21 +308,44 @@ mod tests {
     #[test]
     fn test_compare_missing_in_first() {
         let csv1 = "tx_id,tx_type,from_user_id,to_user_id,amount,timestamp,status,description\n\
-                    1,DEPOSIT,0,42,1000,1234567890,SUCCESS,test\n";
+                1,DEPOSIT,0,42,1000,1234567890,SUCCESS,test\n";
         let csv2 = "tx_id,tx_type,from_user_id,to_user_id,amount,timestamp,status,description\n\
-                    1,DEPOSIT,0,42,1000,1234567890,SUCCESS,test\n\
-                    2,TRANSFER,10,20,500,1234567891,PENDING,second\n";
-
+                1,DEPOSIT,0,42,1000,1234567890,SUCCESS,test\n\
+                2,TRANSFER,10,20,500,1234567891,PENDING,second\n";
         let mut r1 = Cursor::new(csv1);
         let mut r2 = Cursor::new(csv2);
-
         match compare::<CsvFormat, CsvFormat>(&mut r1, &mut r2).unwrap() {
             CompareResult::Mismatch {
                 missing_in_1,
                 missing_in_2,
+                differing,
             } => {
                 assert_eq!(missing_in_1, vec![2]);
                 assert!(missing_in_2.is_empty());
+                assert!(differing.is_empty());
+            }
+            _ => panic!("expected Mismatch"),
+        }
+    }
+
+    #[test]
+    fn test_compare_differing_fields() {
+        let csv1 = "tx_id,tx_type,from_user_id,to_user_id,amount,timestamp,status,description\n\
+                1,DEPOSIT,0,42,1000,1234567890,SUCCESS,test\n";
+        let csv2 = "tx_id,tx_type,from_user_id,to_user_id,amount,timestamp,status,description\n\
+                1,DEPOSIT,0,42,9999,1234567890,SUCCESS,test\n"; // amount differs
+        let mut r1 = Cursor::new(csv1);
+        let mut r2 = Cursor::new(csv2);
+        match compare::<CsvFormat, CsvFormat>(&mut r1, &mut r2).unwrap() {
+            CompareResult::Mismatch {
+                missing_in_1,
+                missing_in_2,
+                differing,
+            } => {
+                assert!(missing_in_1.is_empty());
+                assert!(missing_in_2.is_empty());
+                assert_eq!(differing.len(), 1);
+                assert_eq!(differing[0].0, 1);
             }
             _ => panic!("expected Mismatch"),
         }
